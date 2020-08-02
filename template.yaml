@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  sam-app
+
+  Sample SAM Template for sam-app
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+Resources:
+  LineBotFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: line_bot/
+      Handler: app.lambda_handler
+      Runtime: python3.8
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName:
+              !Ref BalanceCalculatorFunction
+        - LambdaInvokePolicy:
+            FunctionName:
+              !Ref BalanceReferenceFunction
+        - AmazonDynamoDBFullAccess
+      Environment:
+        Variables:
+          BALANCE_CALCULATOR_FUNCTION_ARN: !GetAtt BalanceCalculatorFunction.Arn
+          BALANCE_REFELENCE_FUNCTION_ARN: !GetAtt BalanceReferenceFunction.Arn
+          REFERENCE_MESSAGE: '表示して'
+          REFERENCE_DETAIL_MESSAGE: '詳細表示して'
+          CHANNEL_SECRET: !Ref LineChannelSecret
+      Events:
+        LineBot:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /hello
+            Method: post
+  BalanceCalculatorFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: balance_calculator/
+      Handler: app.lambda_handler
+      Runtime: python3.8
+      Policies:
+        - AmazonDynamoDBFullAccess
+      Environment:
+        Variables:
+          BALANCE_TRANSACTION_TABLE: 'balance_transaction_list'
+          RESPONSE_MESSAGE: '登録しました'
+          LINE_CHANNEL_ACCESS_TOKEN: !Ref LineToken
+  BalanceReferenceFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      CodeUri: balance_reference/
+      Handler: app.lambda_handler
+      Runtime: python3.8
+      Policies:
+        - AmazonDynamoDBFullAccess
+      Environment:
+        Variables:
+          BALANCE_TRANSACTION_TABLE: 'balance_transaction_list'
+          NO_RESPONSE_MESSAGE: '登録がありません'
+          LINE_CHANNEL_ACCESS_TOKEN: !Ref LineToken
+  BalanceTransaction:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        -
+          AttributeName: 'lender'
+          AttributeType: 'S'
+        -
+          AttributeName: 'item'
+          AttributeType: 'S'
+      TableName: 'balance_transaction_list'
+      KeySchema:
+        -
+          AttributeName: 'lender'
+          KeyType: 'HASH'
+        -
+          AttributeName: 'item'
+          KeyType: 'RANGE'
+      ProvisionedThroughput:
+        ReadCapacityUnits: 1
+        WriteCapacityUnits: 1
+
+Parameters:
+  LineToken:
+    Type: String
+  LineChannelSecret:
+    Type: String
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  LineBotApi:
+    Description: "API Gateway endpoint URL for Prod stage for Line Bot function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
+  LineBotFunction:
+    Description: "Line Bot Lambda Function ARN"
+    Value: !GetAtt LineBotFunction.Arn
+  BalanceCalculatorFunction:
+    Description: "Balance Calculator Lambda Function ARN"
+    Value: !GetAtt BalanceCalculatorFunction.Arn
+  LineBotFunctionIamRole:
+    Description: "Implicit IAM Role created for Line Bot function"
+    Value: !GetAtt LineBotFunctionRole.Arn
+  BalanceCalculatorFunctionIamRole:
+    Description: "Implicit IAM Role created for Balance Calculator function"
+    Value: !GetAtt BalanceCalculatorFunctionRole.Arn
+
